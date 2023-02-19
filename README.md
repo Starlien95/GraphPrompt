@@ -2,7 +2,7 @@ We provide the code (in pytorch) and datasets for our paper [**"GraphPrompt: Uni
 for Graph Neural Networks"**](https://arxiv.org/pdf/2302.08043.pdf), 
 which is accepted by WWW2023.
 
-## Description
+# Description
 The repository is organised as follows:
 - **datasets/data/**: contains data we use. Need to be decompressed and be placed in the same path as Count_GNN/
 - **Count_GNN/**: contains our model.
@@ -35,7 +35,7 @@ Flickr prompt tune and test:
 - python pre_train_flickr.py
 - python prompt_fewshot_flickr.py
 
-## Citation
+# Citation
 * **Title**： GraphPrompt: Unifying Pre-Training and Downstream Tasks for Graph Neural Networks
 * **Author**: Zemin Liu*, Xingtong Yu*, Yuan Fang, Xinming Zhang
 * **In proceedings**: WWW2023
