@@ -4,10 +4,9 @@ which is accepted by WWW2023.
 
 ## Description
 The repository is organised as follows:
-- **datasets/data/**: contains data we use. Need to be decompressed and be placed in the same path as Count_GNN/
-- **Count_GNN/**: contains our model.
-- **converter/**: transform the original dataset into the data format that can be inputted into Count_GNN.
-- **generator/**: generate synthetic dataset.
+- **data/**: contains data we use.
+- **graphdownstream/**: implements pre-training and downstream tasks at the graph level.
+- **nodedownstream/**: implements pre-training for flickr and downstream tasks at the node level.
 
 ## Package Dependencies
 * cuda 11.3
