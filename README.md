@@ -14,7 +14,7 @@ python prompt_fewshot.py
 
 ## Node Classification
 
-Default dataset is PROTEINS. You need to change the corresponding parameters in *prompt_fewshot.py* to train and evaluate on PROTEINS. Flikcr use different file to pretrain and tune.
+Default dataset is PROTEINS. You need to change the corresponding parameters in *prompt_fewshot.py* to train and evaluate on PROTEINS. Flikcr uses different file to pretrain and tune.
 ## Prompt tune and test
 python run.py
 
