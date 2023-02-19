@@ -16,7 +16,7 @@ The repository is organised as follows:
 
 ## Running experiments
 ### Graph Classification
-Default dataset is PROTEINS. You need to change the corresponding parameters in *pre_train.py* and *prompt_fewshot.py* to train and evaluate on other datasets.
+Default dataset is ENZYMES. You need to change the corresponding parameters in *pre_train.py* and *prompt_fewshot.py* to train and evaluate on other datasets.
 
 Pretrain:
 - python pre_train.py
@@ -26,7 +26,7 @@ Prompt tune and test:
 
 ### Node Classification
 
-Default dataset is PROTEINS. You need to change the corresponding parameters in *prompt_fewshot.py* to train and evaluate on PROTEINS. Flikcr uses different file to pretrain and tune.
+Default dataset is ENZYMES. You need to change the corresponding parameters in *prompt_fewshot.py* to train and evaluate on PROTEINS. Flikcr uses different file to pretrain and tune.
 
 Prompt tune and test:
 - python run.py
