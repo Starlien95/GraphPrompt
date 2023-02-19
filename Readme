@@ -1,0 +1,21 @@
+
+## Graph Classification
+
+Default dataset is PROTEINS. You need to change the corresponding parameters in *pre_train.py* and *prompt_fewshot.py* to train and evaluate on other datasets.
+# Pre-train
+python pre_train.py 
+
+# Prompt tune and test
+python prompt_fewshot.py
+
+## Node Classification
+Default dataset is PROTEINS. You need to change the corresponding parameters in *prompt_fewshot.py* to train and evaluate on PROTEINS.
+# Prompt tune and test
+python run.py
+
+Flickr
+## Pre-train
+python pre_train_flickr.py
+## Prompt tune and test
+python prompt_fewshot_flickr.py
+
