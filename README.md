@@ -35,6 +35,9 @@ Flickr prompt tune and test:
 - python prompt_fewshot_flickr.py
 
 ## Citation
-* **Title**： GraphPrompt: Unifying Pre-Training and Downstream Tasks for Graph Neural Networks
-* **Author**: Zemin Liu*, Xingtong Yu*, Yuan Fang, Xinming Zhang
-* **In proceedings**: WWW2023
+@inproceedings{liu2023graphprompt,
+  title={GraphPrompt: Unifying Pre-Training and Downstream Tasks for Graph Neural Networks},
+  author={Liu, Zemin and Yu, Xingtong and Fang, Yuan and Zhang, Xinming},
+  booktitle={Proceedings of the ACM Web Conference 2023},
+  year={2023}
+}
