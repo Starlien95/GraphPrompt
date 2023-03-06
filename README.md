@@ -36,8 +36,8 @@ Flickr prompt tune and test:
 
 ## Citation
 @inproceedings{liu2023graphprompt,\
-  title={GraphPrompt: Unifying Pre-Training and Downstream Tasks for Graph Neural Networks},
-  author={Liu, Zemin and Yu, Xingtong and Fang, Yuan and Zhang, Xinming},
-  booktitle={Proceedings of the ACM Web Conference 2023},
-  year={2023}
-}
+  title={GraphPrompt: Unifying Pre-Training and Downstream Tasks for Graph Neural Networks},\
+  author={Liu, Zemin and Yu, Xingtong and Fang, Yuan and Zhang, Xinming},\
+  booktitle={Proceedings of the ACM Web Conference 2023},\
+  year={2023}\
+}\
