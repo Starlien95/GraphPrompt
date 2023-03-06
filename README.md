@@ -40,4 +40,4 @@ Flickr prompt tune and test:
   author={Liu, Zemin and Yu, Xingtong and Fang, Yuan and Zhang, Xinming},\
   booktitle={Proceedings of the ACM Web Conference 2023},\
   year={2023}\
-}\
+}
