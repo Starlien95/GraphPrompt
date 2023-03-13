@@ -441,7 +441,7 @@ if __name__ == "__main__":
     model = model.to(device)
     logger.info(model)
     logger.info("num of parameters: %d" % (sum(p.numel() for p in model.parameters() if p.requires_grad)))
-    save_data_dir=os.path.join(train_config["save_data_dir"],str(train_config["node_feature_dim"]))
+    save_data_dir=train_config["save_data_dir"]
     if os.path.exists(save_data_dir)==False:
         os.mkdir((save_data_dir))
     # load data
