@@ -6,7 +6,7 @@ which is accepted by WWW2023.
 The repository is organised as follows:
 - **data/**: contains data we use.
 - **graphdownstream/**: implements pre-training and downstream tasks at the graph level.
-- **nodedownstream/**: implements pre-training for flickr and downstream tasks at the node level.
+- **nodedownstream/**: implements downstream tasks at the node level.
 
 ## Package Dependencies
 * cuda 11.3
@@ -25,14 +25,10 @@ Prompt tune and test:
 
 ### Node Classification
 
-Default dataset is ENZYMES. You need to change the corresponding parameters in *prompt_fewshot.py* to train and evaluate on other datasets. Flikcr uses different file to pretrain and tune.
+Default dataset is ENZYMES. You need to change the corresponding parameters in *prompt_fewshot.py* to train and evaluate on other datasets. 
 
 Prompt tune and test:
 - python run.py
-
-Flickr prompt tune and test:
-- python pre_train_flickr.py
-- python prompt_fewshot_flickr.py
 
 ## Citation
 @inproceedings{liu2023graphprompt,\
