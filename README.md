@@ -10,7 +10,7 @@ The repository is organised as follows:
 
 ## Package Dependencies
 * cuda 11.3
-* dgl-cu113
+* dgl0.9.0-cu113
 * dgllife
 
 ## Running experiments
