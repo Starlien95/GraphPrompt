@@ -134,7 +134,7 @@ train_config = {
     "dropout": 0.5,
     "gcn_output_dim": 8,
 
-    "prompt": "SUM",
+    "prompt": "FEATURE-WEIGHTED-SUM",
     "prompt_output_dim": 2,
     "scalar": 1e3,
 
