@@ -7,6 +7,7 @@ The repository is organised as follows:
 - **data/**: contains data we use.
 - **graphdownstream/**: implements pre-training and downstream tasks at the graph level.
 - **nodedownstream/**: implements downstream tasks at the node level.
+- **convertor/**: generate raw data.
 
 ## Package Dependencies
 * cuda 11.3
