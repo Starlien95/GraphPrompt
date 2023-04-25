@@ -33,7 +33,7 @@ Prompt tune and test:
 
 ## Note
 
-The code of this project contains a lot of redundancy and is not very readable due to inheriting code from previous work. I deeply apologize for this. I have rewritten the code for GraphPrompt in my new research work, and once the new paper is accepted, I will upload the refactored code to a new repository. Thank you for your understanding and patience.
+The code of this project contains a lot of redundancy and is not very readable due to inheriting code from my previous work *Count-GNN*. I deeply apologize for this. I have rewritten the code for GraphPrompt in my new research work, and once the new paper is accepted, I will upload the refactored code to a new repository. Thank you for your understanding and patience.
 
 ## Citation
 @inproceedings{liu2023graphprompt,\
