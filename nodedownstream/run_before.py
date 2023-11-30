@@ -54,7 +54,6 @@ import random
 from sklearn.metrics import precision_recall_fscore_support
 import functools
 import dgl
-# from dgi import DGI
 try:
     from torch.utils.tensorboard import SummaryWriter
 except BaseException as e:
@@ -96,7 +95,7 @@ train_config = {
 
     "base": 2,
 
-    "gpu_id": 0,
+    "gpu_id": 1,
     "num_workers": 12,
 
     "epochs": 100,
@@ -168,7 +167,7 @@ train_config = {
     "graph_label_num":6,
     "seed": 0,
     "update_pretrain": False,
-    "dropout": 0,
+    "dropout": 0.5,
     "gcn_output_dim": 8,
 
     "prompt": "FEATURE-WEIGHTED-SUM",
@@ -192,8 +191,6 @@ train_config = {
     "split_drop": False,
     "process_raw": False,
     "split": False
-    # "d_p":"01",
-    # "data_type":"enzymes"
 }
 
 from ENZYMES2ONE_Graph import Raw2OneGraph
@@ -201,7 +198,7 @@ from split import split
 from thop import profile
 from fvcore.nn import FlopCountAnalysis, parameter_count_table
 
-def pre_train(model, graph, device, config,self_weight):
+def pre_train(model, graph, device, config):
     epoch_step = 1
     total_step = config["epochs"] * epoch_step
     total_reg_loss = 0
@@ -219,16 +216,11 @@ def pre_train(model, graph, device, config,self_weight):
     graph_len=torch.tensor(graph.number_of_nodes(),device=device)
     s=time.time()
 
-    x,pred = model(graph, graph_len)
+    x,pred = model(graph, graph_len, False)
     pred=F.sigmoid(pred)
 
     adj = graph.adjacency_matrix()
-    size_ = adj.size(0)
-    p = [i for i in range(size_)]
-    x = torch.tensor([p,p])
-    q = [self_weight for i in range(size_)]
-    tt = torch.sparse_coo_tensor(x,q,(size_,size_))
-    adj = (adj + tt).to(device)
+    adj = adj.to(device)
     '''print('---------------------------------------------------')
     print('adj: ',adj.size())
     print('pred: ',adj.size())
@@ -289,9 +281,9 @@ def train(model, optimizer, scheduler, data_type, device, config, epoch, label_n
     s = time.time()
 
     embedding=model(pretrain_embedding,0)
-    # print("$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$")
-    # print("flops", FlopCountAnalysis(model, (pretrain_embedding,0)).total())
-    # print("$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$")
+    print("$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$")
+    print("flops", FlopCountAnalysis(model, (pretrain_embedding,0)).total())
+    print("$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$")
 
 
     node_label=node_label
@@ -332,14 +324,11 @@ def train(model, optimizer, scheduler, data_type, device, config, epoch, label_n
                           epoch * epoch_step + 0)
         writer.add_scalar("%s/BP-%s" % (data_type, config["bp_loss"]), bp_loss_item, epoch * epoch_step + 0)
 
-    # if logger and (0 % config["print_every"] == 0 or 0 == epoch_step - 1):
-    #     pass
-
-    #     logger.info(
-    #         "epoch: {:0>3d}/{:0>3d}\tdata_type: {:<5s}\tbatch: {:0>5d}/{:0>5d}\treg loss: {:0>5.8f}\tbp loss: {:0>5.8f}".format(
-    #             epoch, config["epochs"], data_type, 0, epoch_step,
-    #             reg_loss_item, bp_loss_item))
-
+    if logger and (0 % config["print_every"] == 0 or 0 == epoch_step - 1):
+        logger.info(
+            "epoch: {:0>3d}/{:0>3d}\tdata_type: {:<5s}\tbatch: {:0>5d}/{:0>5d}\treg loss: {:0>5.8f}\tbp loss: {:0>5.8f}".format(
+                epoch, config["epochs"], data_type, 0, epoch_step,
+                reg_loss_item, bp_loss_item))
     bp_loss.backward(retain_graph=True)
     '''for name, parms in model.named_parameters():
         print('-->name:', name, '-->grad_requirs:', parms.requires_grad, \
@@ -362,12 +351,9 @@ def train(model, optimizer, scheduler, data_type, device, config, epoch, label_n
     if writer:
         writer.add_scalar("%s/REG-%s-epoch" % (data_type, config["reg_loss"]), reg_loss.item(), epoch)
         writer.add_scalar("%s/BP-%s-epoch" % (data_type, config["bp_loss"]), bp_loss.item(), epoch)
-    # if logger:
-    #     pass
-
-    #     logger.info("epoch: {:0>3d}/{:0>3d}\tdata_type: {:<5s}\treg loss: {:0>5.8f}\tbp loss: {:0>5.8f}\tmean_acc: {:0>1.3f}".format(
-    #         epoch, config["epochs"], data_type, reg_loss.item(), bp_loss.item(),accuracy))
-   
+    if logger:
+        logger.info("epoch: {:0>3d}/{:0>3d}\tdata_type: {:<5s}\treg loss: {:0>5.8f}\tbp loss: {:0>5.8f}\tmean_acc: {:0>1.3f}".format(
+            epoch, config["epochs"], data_type, reg_loss.item(), bp_loss.item(),accuracy))
     gc.collect()
     return reg_loss, bp_loss, total_time,accuracy,c_embedding
 
@@ -475,22 +461,17 @@ def evaluate(model, data_type, device, config, epoch, c_embedding, label_num, pr
         writer.add_scalar("%s/BP-%s" % (data_type, config["bp_loss"]), bp_loss_item,
                           epoch * epoch_step + 0)
 
-    # if logger and 0 == epoch_step - 1:
-        
-    #     logger.info(
-    #         "epoch: {:0>3d}/{:0>3d}\tdata_type: {:<5s}\tbatch: {:0>5d}/{:0>5d}\treg loss: {:0>5.8f}\tbp loss: {:0>5.8f}\taccuracy: {:0>1.3f}".format(
-    #             epoch, config["epochs"], data_type, 0, epoch_step,
-    #             reg_loss_item, bp_loss_item,accuracy))
-                
-                
+    if logger and 0 == epoch_step - 1:
+        logger.info(
+            "epoch: {:0>3d}/{:0>3d}\tdata_type: {:<5s}\tbatch: {:0>5d}/{:0>5d}\treg loss: {:0>5.8f}\tbp loss: {:0>5.8f}\taccuracy: {:0>1.3f}".format(
+                epoch, config["epochs"], data_type, 0, epoch_step,
+                reg_loss_item, bp_loss_item,accuracy))
     if writer:
         writer.add_scalar("%s/REG-%s-epoch" % (data_type, config["reg_loss"]), reg_loss.item(), epoch)
         writer.add_scalar("%s/BP-%s-epoch" % (data_type, config["bp_loss"]), bp_loss.item(), epoch)
-    # if logger:
-  
-    #     logger.info("epoch: {:0>3d}/{:0>3d}\tdata_type: {:<5s}\treg loss: {:0>5.8f}\tbp loss: {:0>5.8f}\tacc:{:0>1.3f}".format(
-    #         epoch, config["epochs"], data_type, reg_loss_item, bp_loss_item,acc))
-            
+    if logger:
+        logger.info("epoch: {:0>3d}/{:0>3d}\tdata_type: {:<5s}\treg loss: {:0>5.8f}\tbp loss: {:0>5.8f}\tacc:{:0>1.3f}".format(
+            epoch, config["epochs"], data_type, reg_loss_item, bp_loss_item,acc))
 
 
     gc.collect()
@@ -500,11 +481,6 @@ def evaluate(model, data_type, device, config, epoch, c_embedding, label_num, pr
 
 
 if __name__ == "__main__":
-    adj_self_weight = [0,0.1,0.3,0.5,0.7,0.9,1,1,1.1,1.3,1.5,1.7,1.9]
-    adj_self_weight = [1]
-
-
-    record = {1:"1",0.1:"01",0.3:"03",0.5:"05",0.7:"07",0.9:"09",0:"0",1.1:"11",1.3:"13",1.5:"15",1.7:"17",1.9:"19"}
     for i in range(1, len(sys.argv), 2):
         arg = sys.argv[i]
         value = sys.argv[i + 1]
@@ -535,232 +511,224 @@ if __name__ == "__main__":
         split(train_config)
     root_fewshot_dir = os.path.join(train_config["save_fewshot_dir"], "%s_trainshot_%s_valshot_%s_tasks" %
                                (train_config["train_shotnum"], train_config["val_shotnum"], train_config["few_shot_tasknum"]))
-    
-    for weight in range(len(adj_self_weight)):
-        total_rec = list()
-        acc = list()
-        macroF = list()
-        weightedF = list()
 
-        for num in range(train_config["graph_num"]):
-            ts = datetime.datetime.now().strftime('%Y_%m_%d_%H_%M_%S')
-            pretrain_model_name = "%s_%s_%s" % (train_config["pretrain_model"], train_config["predict_net"], ts)
-            save_model_dir = train_config["downstream_save_model_dir"]
-            save_pretrain_model_dir=train_config["save_pretrain_model_dir"]
-            os.makedirs(save_model_dir, exist_ok=True)
+    acc = list()
+    macroF = list()
+    weightedF = list()
 
-            # save config
-            with open(os.path.join(save_model_dir, "train_config.json"), "w") as f:
-                json.dump(train_config, f)
+    for num in range(train_config["graph_num"]):
+        ts = datetime.datetime.now().strftime('%Y_%m_%d_%H_%M_%S')
+        pretrain_model_name = "%s_%s_%s" % (train_config["pretrain_model"], train_config["predict_net"], ts)
+        save_model_dir = train_config["downstream_save_model_dir"]
+        save_pretrain_model_dir=train_config["save_pretrain_model_dir"]
+        os.makedirs(save_model_dir, exist_ok=True)
 
-            # set logger
-            logger = logging.getLogger()
-            logger.setLevel(logging.INFO)
-            fmt = logging.Formatter('%(asctime)s: [ %(message)s ]', '%Y/%m/%d %H:%M:%S')
-            console = logging.StreamHandler()
-            console.setFormatter(fmt)
-            logger.addHandler(console)
-            logfile = logging.FileHandler(os.path.join(save_model_dir, "train_log.txt"), 'w')
-            logfile.setFormatter(fmt)
-            logger.addHandler(logfile)
+        # save config
+        with open(os.path.join(save_model_dir, "train_config.json"), "w") as f:
+            json.dump(train_config, f)
 
-            # set device
-            device = torch.device("cuda:%d" % train_config["gpu_id"] if train_config["gpu_id"] != -1 else "cpu")
-            device = "cuda:0"
-            if train_config["gpu_id"] != -1:
-                torch.cuda.set_device(device)
+        # set logger
+        logger = logging.getLogger()
+        logger.setLevel(logging.INFO)
+        fmt = logging.Formatter('%(asctime)s: [ %(message)s ]', '%Y/%m/%d %H:%M:%S')
+        console = logging.StreamHandler()
+        console.setFormatter(fmt)
+        logger.addHandler(console)
+        logfile = logging.FileHandler(os.path.join(save_model_dir, "train_log.txt"), 'w')
+        logfile.setFormatter(fmt)
+        logger.addHandler(logfile)
 
-            # reset the pattern parameters
-            if train_config["share_emb"]:
-                train_config["max_npv"], train_config["max_npvl"], train_config["max_npe"], train_config["max_npel"] = \
-                    train_config["max_ngv"], train_config["max_ngvl"], train_config["max_nge"], train_config["max_ngel"]
+        # set device
+        device = torch.device("cuda:%d" % train_config["gpu_id"] if train_config["gpu_id"] != -1 else "cpu")
+        if train_config["gpu_id"] != -1:
+            torch.cuda.set_device(device)
+
+        # reset the pattern parameters
+        if train_config["share_emb"]:
+            train_config["max_npv"], train_config["max_npvl"], train_config["max_npe"], train_config["max_npel"] = \
+                train_config["max_ngv"], train_config["max_ngvl"], train_config["max_nge"], train_config["max_ngel"]
 
 
-            os.makedirs(train_config["save_data_dir"], exist_ok=True)
-            # fewshot_dir=os.path.join(train_config["save_fewshot_dir"],"%s_trainshot_%s_valshot_%s_tasks" %
-            #                          (train_config["train_shotnum"],train_config["val_shotnum"],train_config["few_shot_tasknum"]))
-            fewshot_dir=os.path.join(root_fewshot_dir,str(num))
-            print(os.path.exists(fewshot_dir))
-            print("Load Few Shot")
-            trainset = np.load(os.path.join(fewshot_dir, "train_dgl_dataset.npy"),allow_pickle=True)
-            valset = np.load(os.path.join(fewshot_dir, "val_dgl_dataset.npy"),allow_pickle=True)
-            testset = np.load(os.path.join(fewshot_dir, "test_dgl_dataset.npy"),allow_pickle=True)
-            trainset=torch.tensor(trainset,dtype=int)
-            valset=torch.tensor(valset,dtype=int)
-            testset=torch.tensor(testset,dtype=int)
-            graph=dgl.load_graphs(os.path.join(train_config["save_data_dir"],str(num)))[0][0]
-            nodelabel=graph.ndata["label"]
-            nodenum=graph.number_of_nodes()
-            nodelabelnum=nodelabel.max()+1
+        os.makedirs(train_config["save_data_dir"], exist_ok=True)
+        # fewshot_dir=os.path.join(train_config["save_fewshot_dir"],"%s_trainshot_%s_valshot_%s_tasks" %
+        #                          (train_config["train_shotnum"],train_config["val_shotnum"],train_config["few_shot_tasknum"]))
+        fewshot_dir=os.path.join(root_fewshot_dir,str(num))
+        print(os.path.exists(fewshot_dir))
+        print("Load Few Shot")
+        trainset = np.load(os.path.join(fewshot_dir, "train_dgl_dataset.npy"),allow_pickle=True)
+        valset = np.load(os.path.join(fewshot_dir, "val_dgl_dataset.npy"),allow_pickle=True)
+        testset = np.load(os.path.join(fewshot_dir, "test_dgl_dataset.npy"),allow_pickle=True)
+        trainset=torch.tensor(trainset,dtype=int)
+        valset=torch.tensor(valset,dtype=int)
+        testset=torch.tensor(testset,dtype=int)
+        graph=dgl.load_graphs(os.path.join(train_config["save_data_dir"],str(num)))[0][0]
+        nodelabel=graph.ndata["label"]
+        nodenum=graph.number_of_nodes()
+        nodelabelnum=nodelabel.max()+1
 
-            for count in range(train_config["few_shot_tasknum"]):
-                if train_config["pretrain_model"] == "GCN":
-                    pre_train_model = GCN(train_config)
-                if train_config["pretrain_model"] == "GIN":
-                    # pre_train_model_d = DGI(train_config["node_feature_dim"],train_config["gcn_hidden_dim"],train_config)
-                    pre_train_model = GIN(train_config)
-                if train_config["pretrain_model"] == "GAT":
-                    pre_train_model = GAT(train_config)
-                if train_config["pretrain_model"] == "GraphSage":
-                    pre_train_model = Graphsage(train_config)
-                pre_train_model = pre_train_model.to(device)
+        for count in range(train_config["few_shot_tasknum"]):
+            if train_config["pretrain_model"] == "GCN":
+                pre_train_model = GCN(train_config)
+            if train_config["pretrain_model"] == "GIN":
+                pre_train_model = GIN(train_config)
+            if train_config["pretrain_model"] == "GAT":
+                pre_train_model = GAT(train_config)
+            if train_config["pretrain_model"] == "GraphSage":
+                pre_train_model = Graphsage(train_config)
+            pre_train_model = pre_train_model.to(device)
 
-                # pre_train_model_d.load_state_dict(torch.load(os.path.join(save_pretrain_model_dir, 'graph_CL_%s.pt'%(train_config["d_p"]))))
-                # torch.save(pre_train_model_d.gin.state_dict(), os.path.join(save_pretrain_model_dir, "gin_CL_%s.pt"%(train_config["d_p"])))
-                pre_train_model.load_state_dict(torch.load(os.path.join(save_pretrain_model_dir, 'best_local_ex%s.pt'%(record[adj_self_weight[weight]]))))
-                # logger.info("num of pretrain parameters: %d" % (
-                #     sum(p.numel() for p in pre_train_model.parameters())))
+            pre_train_model.load_state_dict(torch.load(os.path.join(save_pretrain_model_dir, 'best.pt')))
+            logger.info("num of pretrain parameters: %d" % (
+                sum(p.numel() for p in pre_train_model.parameters())))
 
-                pretrain_embedding = pre_train(pre_train_model, graph, device, train_config,self_weight=adj_self_weight[weight])
+            pretrain_embedding = pre_train(pre_train_model, graph, device, train_config)
 
-                print("--------------------------------------------------------------------------------------")
-                print("start task ", count)
-                _trainset = trainset[count]
-                _valset = valset[count]
-                _testset = testset[count]
+            print("--------------------------------------------------------------------------------------")
+            print("start task ", count)
+            _trainset = trainset[count]
+            _valset = valset[count]
+            _testset = testset[count]
 
-                trainmask = index2mask(_trainset, nodenum)
-                valmask = index2mask(_valset, nodenum)
-                testmask = index2mask(_testset, nodenum)
-                nodelabel = nodelabel.to(device)
-                pretrain_embedding = pretrain_embedding.to(device)
-                trainmask, valmask, testmask = trainmask.to(device), valmask.to(device), testmask.to(device)
-                trainlabel = torch.masked_select(nodelabel, torch.tensor(trainmask, dtype=bool)).unsqueeze(1)
-                vallabel = torch.masked_select(nodelabel, torch.tensor(valmask, dtype=bool)).unsqueeze(1)
-                testlabel = torch.masked_select(nodelabel, torch.tensor(testmask, dtype=bool)).unsqueeze(1)
-                trainemb = mask_select_emb(pretrain_embedding, trainmask, device)
-                valemb = mask_select_emb(pretrain_embedding, valmask, device)
-                testemb = mask_select_emb(pretrain_embedding, testmask, device)
+            trainmask = index2mask(_trainset, nodenum)
+            valmask = index2mask(_valset, nodenum)
+            testmask = index2mask(_testset, nodenum)
+            nodelabel = nodelabel.to(device)
+            pretrain_embedding = pretrain_embedding.to(device)
+            trainmask, valmask, testmask = trainmask.to(device), valmask.to(device), testmask.to(device)
+            trainlabel = torch.masked_select(nodelabel, torch.tensor(trainmask, dtype=bool)).unsqueeze(1)
+            vallabel = torch.masked_select(nodelabel, torch.tensor(valmask, dtype=bool)).unsqueeze(1)
+            testlabel = torch.masked_select(nodelabel, torch.tensor(testmask, dtype=bool)).unsqueeze(1)
+            trainemb = mask_select_emb(pretrain_embedding, trainmask, device)
+            valemb = mask_select_emb(pretrain_embedding, valmask, device)
+            testemb = mask_select_emb(pretrain_embedding, testmask, device)
 
-                if train_config["prompt"] == "SUM":
-                    model = node_prompt_layer_sum()
-                if train_config["prompt"] == "LINEAR-MEAN":
-                    model = node_prompt_layer_linear_mean(
-                        train_config["gcn_hidden_dim"] * train_config["gcn_graph_num_layers"],
-                        train_config["prompt_output_dim"])
-                if train_config["prompt"] == "LINEAR-SUM":
-                    model = node_prompt_layer_linear_sum(
-                        train_config["gcn_hidden_dim"] * train_config["gcn_graph_num_layers"],
-                        train_config["prompt_output_dim"])
-                if train_config["prompt"] == "FEATURE-WEIGHTED-SUM":
-                    model = node_prompt_layer_feature_weighted_sum(
-                        train_config["gcn_hidden_dim"] * train_config["gcn_graph_num_layers"])
-                if train_config["prompt"] == "FEATURE-WEIGHTED-MEAN":
-                    model = node_prompt_layer_feature_weighted_mean(
-                        train_config["gcn_hidden_dim"] * train_config["gcn_graph_num_layers"])
-                model = model.to(device)
-                logger.info(model)
-                logger.info("num of parameters: %d" % (sum(p.numel() for p in model.parameters() if p.requires_grad)))
-                # optimizer and losses
-                writer = SummaryWriter(save_model_dir)
-                writer = None
-                if train_config["update_pretrain"]:
-                    # optimizer = torch.optim.AdamW(itertools.chain(pre_train_model.parameters(), model.parameters()),
-                    #                               lr=train_config["lr"],
-                    #                               weight_decay=train_config["weight_decay"], amsgrad=True)
-                    optimizer = torch.optim.AdamW(model.parameters(), lr=train_config["lr"],
-                                                weight_decay=train_config["weight_decay"], amsgrad=True)
-                    pre_optimizer=torch.optim.AdamW(pre_train_model.parameters(), lr=train_config["lr"],
-                                                weight_decay=train_config["weight_decay"], amsgrad=True)
-                    pre_optimizer.zero_grad()
-                else:
-                    optimizer = torch.optim.AdamW(model.parameters(), lr=train_config["lr"],
-                                                weight_decay=train_config["weight_decay"], amsgrad=True)
+            if train_config["prompt"] == "SUM":
+                model = node_prompt_layer_sum()
+            if train_config["prompt"] == "LINEAR-MEAN":
+                model = node_prompt_layer_linear_mean(
+                    train_config["gcn_hidden_dim"] * train_config["gcn_graph_num_layers"],
+                    train_config["prompt_output_dim"])
+            if train_config["prompt"] == "LINEAR-SUM":
+                model = node_prompt_layer_linear_sum(
+                    train_config["gcn_hidden_dim"] * train_config["gcn_graph_num_layers"],
+                    train_config["prompt_output_dim"])
+            if train_config["prompt"] == "FEATURE-WEIGHTED-SUM":
+                model = node_prompt_layer_feature_weighted_sum(
+                    train_config["gcn_hidden_dim"] * train_config["gcn_graph_num_layers"])
+            if train_config["prompt"] == "FEATURE-WEIGHTED-MEAN":
+                model = node_prompt_layer_feature_weighted_mean(
+                    train_config["gcn_hidden_dim"] * train_config["gcn_graph_num_layers"])
+            model = model.to(device)
+            logger.info(model)
+            logger.info("num of parameters: %d" % (sum(p.numel() for p in model.parameters() if p.requires_grad)))
+            # optimizer and losses
+            writer = SummaryWriter(save_model_dir)
+            if train_config["update_pretrain"]:
+                # optimizer = torch.optim.AdamW(itertools.chain(pre_train_model.parameters(), model.parameters()),
+                #                               lr=train_config["lr"],
+                #                               weight_decay=train_config["weight_decay"], amsgrad=True)
+                optimizer = torch.optim.AdamW(model.parameters(), lr=train_config["lr"],
+                                              weight_decay=train_config["weight_decay"], amsgrad=True)
+                pre_optimizer=torch.optim.AdamW(pre_train_model.parameters(), lr=train_config["lr"],
+                                              weight_decay=train_config["weight_decay"], amsgrad=True)
+                pre_optimizer.zero_grad()
+            else:
+                optimizer = torch.optim.AdamW(model.parameters(), lr=train_config["lr"],
+                                              weight_decay=train_config["weight_decay"], amsgrad=True)
 
-                optimizer.zero_grad()
-                scheduler = None
-                # scheduler = get_linear_schedule_with_warmup(optimizer,
-                #     len(data_loaders["train"]), train_config["epochs"]*len(data_loaders["train"]), min_percent=0.0001)
-                best_bp_losses = {"train": INF, "dev": INF, "test": INF}
-                best_bp_epochs = {"train": -1, "dev": -1, "test": -1}
-                best_acc = {"train": -1, "dev": -1, "test": -1}
+            optimizer.zero_grad()
+            scheduler = None
+            # scheduler = get_linear_schedule_with_warmup(optimizer,
+            #     len(data_loaders["train"]), train_config["epochs"]*len(data_loaders["train"]), min_percent=0.0001)
+            best_bp_losses = {"train": INF, "dev": INF, "test": INF}
+            best_bp_epochs = {"train": -1, "dev": -1, "test": -1}
+            best_acc = {"train": -1, "dev": -1, "test": -1}
 
-                total_train_time = 0
-                total_dev_time = 0
-                total_test_time = 0
-                best_c_embedding = None
-                c_embedding = None
-                for epoch in range(train_config["epochs"]):
-                    mean_reg_loss, mean_bp_loss, _time, accfold, c_embedding = train(model, optimizer, scheduler, "train",
-                                                                                    device,
-                                                                                    train_config, epoch,
-                                                                                    nodelabelnum,
-                                                                                    trainemb, trainlabel, logger=logger,
-                                                                                    writer=writer)
-                    total_train_time += _time
-                    torch.save(model.state_dict(), os.path.join(save_model_dir, 'epoch%d.pt' % (epoch)))
-                    if train_config["update_pretrain"] == True:
-                        torch.save(pre_train_model.state_dict(),
-                                os.path.join(save_model_dir, 'pretrain_epoch%d.pt' % (epoch)))
-                    if accfold >= best_acc["train"] or mean_bp_loss <= best_bp_losses["train"]:
-                        if accfold >= best_acc["train"]:
-                            best_acc["train"] = accfold
-                        if mean_bp_loss < best_bp_losses["train"]:
-                            best_bp_losses["train"] = mean_bp_loss
-                        # ------------------------------------------------------------
-                        # best_bp_losses[data_type] = mean_bp_loss
-                        # best_acc[data_type]=epoch_accuracy
-                        best_bp_epochs["train"] = epoch
-                  
-                        # logger.info(
-                        #     "data_type: {:<5s}\tbest mean loss: {:.3f}\t best acc: {:.3f}\t (epoch: {:0>3d})".format(
-                        #         "train", mean_bp_loss, accfold, epoch))
-                          
-
-                    mean_reg_loss, mean_bp_loss, evaluate_results, _time, accfold, macroFfold, weightedFfold, c_embedding = \
-                        evaluate(model, "val", device, train_config, epoch, c_embedding,
-                                nodelabelnum, valemb, vallabel, logger=logger, writer=writer)
-                    total_dev_time += _time
-                    with open(os.path.join(save_model_dir, '%s%d.json' % ("val", epoch)), "w") as f:
-                        json.dump(evaluate_results, f)
-                    if accfold >= best_acc["dev"] or mean_bp_loss <= best_bp_losses["dev"]:
-                        if accfold >= best_acc["dev"]:
-                            best_acc["dev"] = accfold
-                        if mean_bp_loss < best_bp_losses["dev"]:
-                            best_bp_losses["dev"] = mean_bp_loss
-                        # ------------------------------------------------------------
-                        best_c_embedding = c_embedding
-
-                        # best_bp_losses[data_type] = mean_bp_loss
-                        # best_acc[data_type]=epoch_accuracy
-                        best_bp_epochs["dev"] = epoch
-
-
-                best_epoch = best_bp_epochs["dev"]
-                data_loaders = OrderedDict({"test": None})
-                data_loaders["test"] = testset[count]
-                model.load_state_dict(torch.load(os.path.join(save_model_dir, 'epoch%d.pt' % (best_epoch))))
+            total_train_time = 0
+            total_dev_time = 0
+            total_test_time = 0
+            best_c_embedding = None
+            c_embedding = None
+            for epoch in range(train_config["epochs"]):
+                mean_reg_loss, mean_bp_loss, _time, accfold, c_embedding = train(model, optimizer, scheduler, "train",
+                                                                                 device,
+                                                                                 train_config, epoch,
+                                                                                 nodelabelnum,
+                                                                                 trainemb, trainlabel, logger=logger,
+                                                                                 writer=writer)
+                total_train_time += _time
+                torch.save(model.state_dict(), os.path.join(save_model_dir, 'epoch%d.pt' % (epoch)))
                 if train_config["update_pretrain"] == True:
-                    pre_train_model.load_state_dict(
-                        torch.load(os.path.join(save_model_dir, 'pretrain_epoch%d.pt' % (best_epoch))))
-                mean_reg_loss, mean_bp_loss, evaluate_results, _time, acctest, macroFtest, weightedFtest, c_embedding = \
-                    evaluate(model, "test", device, train_config, epoch, best_c_embedding,
-                            nodelabelnum, testemb, testlabel, debug=True, logger=logger, writer=writer)
+                    torch.save(pre_train_model.state_dict(),
+                               os.path.join(save_model_dir, 'pretrain_epoch%d.pt' % (epoch)))
+                if accfold >= best_acc["train"] or mean_bp_loss <= best_bp_losses["train"]:
+                    if accfold >= best_acc["train"]:
+                        best_acc["train"] = accfold
+                    if mean_bp_loss < best_bp_losses["train"]:
+                        best_bp_losses["train"] = mean_bp_loss
+                    # ------------------------------------------------------------
+                    # best_bp_losses[data_type] = mean_bp_loss
+                    # best_acc[data_type]=epoch_accuracy
+                    best_bp_epochs["train"] = epoch
+                    logger.info(
+                        "data_type: {:<5s}\tbest mean loss: {:.3f}\t best acc: {:.3f}\t (epoch: {:0>3d})".format(
+                            "train", mean_bp_loss, accfold, epoch))
 
-                print("testacc:", acctest)
-                acc.append(acctest)
-                macroF.append(macroFtest)
-                weightedF.append(weightedFtest)
-                print("#################################################")
-                print("total train time",total_train_time)
-                print("#################################################")
+                mean_reg_loss, mean_bp_loss, evaluate_results, _time, accfold, macroFfold, weightedFfold, c_embedding = \
+                    evaluate(model, "val", device, train_config, epoch, c_embedding,
+                             nodelabelnum, valemb, vallabel, logger=logger, writer=writer)
+                total_dev_time += _time
+                with open(os.path.join(save_model_dir, '%s%d.json' % ("val", epoch)), "w") as f:
+                    json.dump(evaluate_results, f)
+                if accfold >= best_acc["dev"] or mean_bp_loss <= best_bp_losses["dev"]:
+                    if accfold >= best_acc["dev"]:
+                        best_acc["dev"] = accfold
+                    if mean_bp_loss < best_bp_losses["dev"]:
+                        best_bp_losses["dev"] = mean_bp_loss
+                    # ------------------------------------------------------------
+                    best_c_embedding = c_embedding
 
-                
+                    # best_bp_losses[data_type] = mean_bp_loss
+                    # best_acc[data_type]=epoch_accuracy
+                    best_bp_epochs["dev"] = epoch
+                    logger.info(
+                        "data_type: {:<5s}\tbest mean loss: {:.3f}\t best acc: {:.3f}\t (epoch: {:0>3d})".format(
+                            "dev", mean_bp_loss, accfold, epoch))
 
+            best_epoch = best_bp_epochs["dev"]
+            data_loaders = OrderedDict({"test": None})
+            data_loaders["test"] = testset[count]
+            model.load_state_dict(torch.load(os.path.join(save_model_dir, 'epoch%d.pt' % (best_epoch))))
+            if train_config["update_pretrain"] == True:
+                pre_train_model.load_state_dict(
+                    torch.load(os.path.join(save_model_dir, 'pretrain_epoch%d.pt' % (best_epoch))))
+            mean_reg_loss, mean_bp_loss, evaluate_results, _time, acctest, macroFtest, weightedFtest, c_embedding = \
+                evaluate(model, "test", device, train_config, epoch, best_c_embedding,
+                         nodelabelnum, testemb, testlabel, debug=True, logger=logger, writer=writer)
 
-        acc=np.array(acc)
-        macroF=np.array(macroF)
-        weightedF=np.array(weightedF)
+            print("testacc:", acctest)
+            acc.append(acctest)
+            macroF.append(macroFtest)
+            weightedF.append(weightedFtest)
+            print("#################################################")
+            print("total train time",total_train_time)
+            print("#################################################")
 
-        total_rec.append('%sacc mean:'%(record[adj_self_weight[weight]]))
-        total_rec.append(np.mean(acc))
-        
-        total_rec.append('%sacc std: '%(record[adj_self_weight[weight]]))
-        total_rec.append(np.std(acc))
-        total_rec.append('%sMF:'%(record[adj_self_weight[weight]]))
-        total_rec.append(np.mean(macroF))
-        
-        total_rec.append('%sMFstd: '%(record[adj_self_weight[weight]]))
-        total_rec.append(np.std(macroF))
-        #np.savetxt('total_rec%s_enzymes.txt'%(record[adj_self_weight[weight]]),total_rec,fmt='%s')
-        np.savetxt('S.txt',total_rec,fmt='%s')
+            for data_type in data_loaders.keys():
+                logger.info(
+                    "data_type: {:<5s}\tbest mean loss: {:.3f} (epoch: {:0>3d})".format(data_type,
+                                                                                        best_bp_losses[data_type],
+                                                                                        best_bp_epochs[data_type]))
+
+    print('acc for 10fold: ', acc)
+    print('macroF for 10fold: ', macroF)
+    print('weightedF for 10fold: ', weightedF)
+    acc = np.array(acc)
+    macroF = np.array(macroF)
+    weightedF = np.array(weightedF)
+
+    print('acc mean: ', np.mean(acc), 'acc std: ', np.std(acc))
+    print('macroF mean: ', np.mean(macroF), 'macroF std: ', np.std(macroF))
+    print('weightedF mean: ', np.mean(weightedF), 'weightedF std: ', np.std(weightedF))
+
+    # _________________________________________________________________________________________________________________

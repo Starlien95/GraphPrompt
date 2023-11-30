@@ -765,34 +765,7 @@ def compareloss(input,temperature):
     negative=input[2]
     result=-1*torch.log(torch.exp(F.cosine_similarity(a,positive)/temperature)/torch.exp(F.cosine_similarity(a,negative)/temperature))
     return result.mean()
-def compareloss_(input,_sample,temperature):
-    #print(input.size())
-    input = mygather(input, _sample)
-    #print(input.size())
-    node_feature = input.permute(0,2,1,3)
-    temperature=torch.tensor(temperature,dtype=float)
-    #print(node_feature.size())
-    a = node_feature[:,0,:,:]
-    #print(a.size())
-    positive = node_feature[:,1,:,:]
-    negative =  node_feature[:,2,:,:]
-    x = torch.exp(F.cosine_similarity(a,positive,dim=-1)/temperature)
-    y = torch.exp(F.cosine_similarity(a,negative,dim=-1)/temperature)
-                  
-    result=-1*torch.log(x/y)
-    return result.mean()
-def mygather(feature, index):
-    input_size=index.size(0)
-    index = index.flatten()
-    index = index.reshape(len(index), 1)
-   
-    index = torch.broadcast_to(index, (len(index), feature.size(2)))
-    # print(tuples)
 
-    index = torch.reshape(index,(feature.size(0),-1,feature.size(-1)))
-    res = torch.gather(feature, dim=1, index=index)
-
-    return res.reshape(input_size,feature.size(1),3,feature.size(2))
 class label2onehot(torch.nn.Module):
     def __init__(self, labelnum,device):
         super(label2onehot, self).__init__()

@@ -2,7 +2,6 @@ import torch
 import os
 import numpy as np
 import dgl
-# from dgi import DGI
 import logging
 import datetime
 import math
@@ -17,7 +16,6 @@ from functools import partial
 from collections import OrderedDict
 from torch.utils.data import DataLoader
 from dgllife.utils import ConsecutiveSplitter
-from thop import profile
 
 
 
@@ -41,9 +39,6 @@ from gin import GIN'''
 # from gat import GAT
 # from gcn_onehot import GCN
 from gin import GIN
-# from gcn import GCN
-# from gat import GAT
-# from graphsage import Graphsage
 # from graphsage import Graphsage
 from graph_prompt_layer import graph_prompt_layer_mean,graph_prompt_layer_linear_mean,graph_prompt_layer_linear_sum,\
     graph_prompt_layer_sum,graph_prompt_layer_feature_weighted_mean,graph_prompt_layer_feature_weighted_sum
@@ -52,10 +47,10 @@ warnings.filterwarnings("ignore")
 INF = float("inf")
 
 train_config = {
-    "max_npv": 8,  # max_number_pattern_vertices: 8, 16, 32
-    "max_npe": 8,  # max_number_pattern_edges: 8, 16, 32
-    "max_npvl": 8,  # max_number_pattern_vertex_labels: 8, 16, 32
-    "max_npel": 8,  # max_number_pattern_edge_labels: 8, 16, 32
+    "max_npv": 620,  # max_number_pattern_vertices: 8, 16, 32
+    "max_npe": 2098,  # max_number_pattern_edges: 8, 16, 32
+    "max_npvl": 2,  # max_number_pattern_vertex_labels: 8, 16, 32
+    "max_npel": 2,  # max_number_pattern_edge_labels: 8, 16, 32
 
     "max_ngv": 126,  # max_number_graph_vertices: 64, 512,4096
     "max_nge": 298,  # max_number_graph_edges: 256, 2048, 16384
@@ -64,7 +59,7 @@ train_config = {
 
     "base": 2,
 
-    "gpu_id": 0,
+    "gpu_id": -1,
     "num_workers": 12,
 
     "epochs": 100,
@@ -72,9 +67,9 @@ train_config = {
     "update_every": 1,  # actual batch_sizer = batch_size * update_every
     "print_every": 100,
     "init_emb": "Equivariant",  # None, Orthogonal, Normal, Equivariant
-    "share_emb": False,  # sharing embedding requires the same vector length
+    "share_emb": True,  # sharing embedding requires the same vector length
     "share_arch": True,  # sharing architectures
-    "dropout": 0.2,
+    "dropout": 0,
     "dropatt": 0.2,
 
     "reg_loss": "NLL",  # MAE, MSEl
@@ -120,15 +115,14 @@ train_config = {
     "gcn_graph_num_layers": 3,
     "gcn_hidden_dim": 32,
     "gcn_ignore_norm": False,  # ignorm=True -> RGCN-SUM
-
-    "graph_dir": "../data/ENZYMES/raw",
+    "graph_dir": "../data/ENZYMES/ENZYMESPreTrain",
     "save_data_dir": "../data/ENZYMESPreTrain",
     "save_model_dir": "../dumps/debug",
-    "save_pretrain_model_dir": "../dumps/ENZYMESPreTrain/GIN",
+    "save_pretrain_model_dir": "../dumps/ENZYMESPreTrain/TEST",
     "graphslabel_dir":"../data/ENZYMES/ENZYMES_graph_labels.txt",
     "downstream_graph_dir": "../data/debug/graphs",
     "downstream_save_data_dir": "../data/debug",
-    "downstream_save_model_dir": "../dumps/ENZYMESGraphClassification/Prompt/GIN-FEATURE-WEIGHTED-SUM/5train5val100task",
+    "downstream_save_model_dir": "./dumps/ENZYMESGraphClassification/Prompt/TEST-FEATURE-WEIGHTED-SUM/5train5val100task",
     "downstream_graphslabel_dir":"../data/debug/graphs",
     "temperature": 0.01,
     "graph_finetuning_input_dim": 8,
@@ -136,10 +130,10 @@ train_config = {
     "graph_label_num":6,
     "seed": 0,
     "update_pretrain": False,
-    "dropout": 0,
+    "dropout": 0.5,
     "gcn_output_dim": 8,
 
-    "prompt": "FEATURE-WEIGHTED-SUM",
+    "prompt": "SUM",
     "prompt_output_dim": 2,
     "scalar": 1e3,
 
@@ -154,9 +148,7 @@ train_config = {
     "node_feature_dim": 18,
     "train_label_num": 6,
     "val_label_num": 6,
-    "test_label_num": 6,
-    "d_p":"01",
-    "data_type":"cox2"
+    "test_label_num": 6
 }
 
 
@@ -200,10 +192,6 @@ def train(pretrain_model, model, optimizer, scheduler, data_type, data_loader, d
         raise NotImplementedError
 
     model.train()
-    pre_train_model.eval()
-    # for name, para in pre_train_model.named_parameters():
-    #     if para.requires_grad == True:
-    #         print(name)
     total_time = 0
     l2onehot=label2onehot(train_config["graph_label_num"],device)
     label_num=torch.tensor(label_num).to(device)
@@ -224,17 +212,9 @@ def train(pretrain_model, model, optimizer, scheduler, data_type, data_loader, d
         embedding=F.dropout(embedding,p=train_config["downstream_dropout"])
         c_embedding=center_embedding(embedding,graph_label,label_num)
         distance=distance2center(embedding,c_embedding)
-        #print(distance)
 
         distance = 1/F.normalize(distance, dim=1)
-
-        #distance=distance2center2(embedding,c_embedding)
-
-        #print('distance: ',distance )
         pred=F.log_softmax(distance,dim=1)
-        #----------------------------------------
-        #reg_loss = reg_crit(pred, graph_label_onehot)
-        #对NLL LOSS用这个公式，否则用上面的
         reg_loss = reg_crit(pred, graph_label.squeeze().type(torch.LongTensor).to(device))
         #------------------------------------------------
         reg_loss.requires_grad_(True)
@@ -248,8 +228,6 @@ def train(pretrain_model, model, optimizer, scheduler, data_type, data_loader, d
             neg_slp = anneal_fn(bp_loss_slp, batch_id + epoch * epoch_step, T=total_step // 4, lambda0=float(l0),
                                 lambda1=float(l1))
 
-        #bp_loss = bp_crit(pred.float(), graph_label_onehot.float(), neg_slp)
-        #对NLL LOSS用这个公式，否则用上面的
         bp_loss = bp_crit(pred.float(), graph_label.squeeze().type(torch.LongTensor).to(device),neg_slp)
         bp_loss.requires_grad_(True)
 
@@ -264,23 +242,12 @@ def train(pretrain_model, model, optimizer, scheduler, data_type, data_loader, d
                               epoch * epoch_step + batch_id)
             writer.add_scalar("%s/BP-%s" % (data_type, config["bp_loss"]), bp_loss_item, epoch * epoch_step + batch_id)
 
-        # if logger and (batch_id % config["print_every"] == 0 or batch_id == epoch_step - 1):
-        #     logger.info(
-        #         "epoch: {:0>3d}/{:0>3d}\tdata_type: {:<5s}\tbatch: {:0>5d}/{:0>5d}\treg loss: {:0>5.8f}\tbp loss: {:0>5.8f}".format(
-        #             epoch, config["epochs"], data_type, batch_id, epoch_step,
-        #             reg_loss_item, bp_loss_item))
-        # for name, para in pre_train_model.named_parameters():
-        #     print("xxx")
-        #     print(para)
-        # bp_loss.backward()
-        # for name, para in pre_train_model.named_parameters():
-        #     print("yyy")
-        #     print(para)
-        '''for name, parms in model.named_parameters():
-            print('-->name:', name, '-->grad_requirs:', parms.requires_grad, \
-                  ' -->grad_value:', parms.grad)'''
-        '''for name, parms in model.named_parameters():
-            print('-->name:', name, ' -->value:', parms)'''
+        if logger and (batch_id % config["print_every"] == 0 or batch_id == epoch_step - 1):
+            logger.info(
+                "epoch: {:0>3d}/{:0>3d}\tdata_type: {:<5s}\tbatch: {:0>5d}/{:0>5d}\treg loss: {:0>5.8f}\tbp loss: {:0>5.8f}".format(
+                    epoch, config["epochs"], data_type, batch_id, epoch_step,
+                    reg_loss_item, bp_loss_item))
+        bp_loss.backward()
         if (config["update_every"] < 2 or batch_id % config["update_every"] == 0 or batch_id == epoch_step - 1):
             if config["max_grad_norm"] > 0:
                 torch.nn.utils.clip_grad_norm_(model.parameters(), config["max_grad_norm"])
@@ -297,9 +264,9 @@ def train(pretrain_model, model, optimizer, scheduler, data_type, data_loader, d
     if writer:
         writer.add_scalar("%s/REG-%s-epoch" % (data_type, config["reg_loss"]), mean_reg_loss, epoch)
         writer.add_scalar("%s/BP-%s-epoch" % (data_type, config["bp_loss"]), mean_bp_loss, epoch)
-    # if logger:
-    #     logger.info("epoch: {:0>3d}/{:0>3d}\tdata_type: {:<5s}\treg loss: {:0>5.8f}\tbp loss: {:0>5.8f}\tmean_acc: {:0>1.3f}".format(
-    #         epoch, config["epochs"], data_type, mean_reg_loss, mean_bp_loss,mean_acc))
+    if logger:
+        logger.info("epoch: {:0>3d}/{:0>3d}\tdata_type: {:<5s}\treg loss: {:0>5.8f}\tbp loss: {:0>5.8f}\tmean_acc: {:0>1.3f}".format(
+            epoch, config["epochs"], data_type, mean_reg_loss, mean_bp_loss,mean_acc))
     gc.collect()
     return mean_reg_loss, mean_bp_loss, total_time,mean_acc,c_embedding
 
@@ -350,7 +317,6 @@ def evaluate(pretrain_model, model, data_type, data_loader, device, config, epoc
         raise NotImplementedError
 
     model.eval()
-    pre_train_model.eval()
     l2onehot=label2onehot(train_config["graph_label_num"],device)
     label_num=torch.tensor(label_num).to(device)
     total_time = 0
@@ -368,9 +334,6 @@ def evaluate(pretrain_model, model, data_type, data_loader, device, config, epoc
 
             s = time.time()
             x,embedding = pretrain_model(graph, graph_len)
-            # if debug:
-            #     print("####################")
-            #     print("pretrain embedding:",embedding)
             embedding = model(embedding, graph_len)*train_config["scalar"]
             c_embedding = center_embedding(embedding, graph_label, label_num,debug)
 
@@ -378,7 +341,6 @@ def evaluate(pretrain_model, model, data_type, data_loader, device, config, epoc
             distance=-1*F.normalize(distance,dim=1)
 
             pred=F.log_softmax(distance,dim=1)
-            # 对NLL LOSS用这个公式，否则用上面的
             reg_loss = reg_crit(pred, graph_label.squeeze().type(torch.LongTensor).to(device))
 
             if isinstance(config["bp_loss_slp"], (int, float)):
@@ -387,11 +349,8 @@ def evaluate(pretrain_model, model, data_type, data_loader, device, config, epoc
                 bp_loss_slp, l0, l1 = config["bp_loss_slp"].rsplit("$", 3)
                 neg_slp = anneal_fn(bp_loss_slp, batch_id + epoch * epoch_step, T=total_step // 4, lambda0=float(l0),
                                     lambda1=float(l1))
-            #bp_loss = bp_crit(pred.float(), graph_label_onehot.float(), neg_slp)
-            # 对NLL LOSS用这个公式，否则用上面的
             bp_loss = bp_crit(pred, graph_label.squeeze().type(torch.LongTensor).to(device), neg_slp)
 
-            #graph_label_onehot=l2onehot(graph_label)
             _pred = torch.argmax(pred, dim=1, keepdim=True)
             accuracy = correctness_GPU(_pred, graph_label)
             eval_pred=_pred.cpu().numpy()
@@ -411,13 +370,7 @@ def evaluate(pretrain_model, model, data_type, data_loader, device, config, epoc
             total_bp_loss += bp_loss_item * cnt
             evaluate_results["data"]["id"].extend(ids)
             evaluate_results["data"]["counts"].extend(graph_label.view(-1).tolist())
-            #evaluate_results["time"]["total"] += (et-st)
-            #avg_t = (et-st) / (cnt + 1e-8)
-            #evaluate_results["time"]["avg"].extend([avg_t]*cnt)
             evaluate_results["data"]["pred"].extend(_pred.cpu().view(-1).tolist())
-
-            #evaluate_results["error"]["mae"] += F.l1_loss(F.leaky_relu(pred.float(),neg_slp), graph_label_onehot.float(), reduce="none").sum().item()
-            #evaluate_results["error"]["mse"] += F.mse_loss(F.leaky_relu(pred.float(),neg_slp), graph_label_onehot.float(), reduce="none").sum().item()
             if writer:
                 writer.add_scalar("%s/REG-%s" % (data_type, config["reg_loss"]), reg_loss_item,
                                   epoch * epoch_step + batch_id)
@@ -437,26 +390,15 @@ def evaluate(pretrain_model, model, data_type, data_loader, device, config, epoc
         if writer:
             writer.add_scalar("%s/REG-%s-epoch" % (data_type, config["reg_loss"]), mean_reg_loss, epoch)
             writer.add_scalar("%s/BP-%s-epoch" % (data_type, config["bp_loss"]), mean_bp_loss, epoch)
-        # if logger:
-        #     logger.info("epoch: {:0>3d}/{:0>3d}\tdata_type: {:<5s}\treg loss: {:0>5.8f}\tbp loss: {:0>5.8f}\tacc:{:0>1.3f}".format(
-        #         epoch, config["epochs"], data_type, mean_reg_loss, mean_bp_loss,mean_acc))
-
-        #evaluate_results["error"]["mae"] = evaluate_results["error"]["mae"] / total_cnt
-        #evaluate_results["error"]["mse"] = evaluate_results["error"]["mse"] / total_cnt
-        #accuracy = correctness(evaluate_results["data"]["pred"], evaluate_results["data"]["counts"])
-        #macrof=macrof1(evaluate_results["data"]["pred"],evaluate_results["data"]["counts"])
-        #weightedf=weightf1(evaluate_results["data"]["pred"],evaluate_results["data"]["counts"])
+        if logger:
+            logger.info("epoch: {:0>3d}/{:0>3d}\tdata_type: {:<5s}\treg loss: {:0>5.8f}\tbp loss: {:0>5.8f}\tacc:{:0>1.3f}".format(
+                epoch, config["epochs"], data_type, mean_reg_loss, mean_bp_loss,mean_acc))
 
     gc.collect()
-    #return mean_reg_loss, mean_bp_loss, evaluate_results, total_time,mean_acc.cpu(),macrof,weightedf,c_embedding
     return mean_reg_loss, mean_bp_loss, evaluate_results, total_time,mean_acc,mean_macrof,mean_weighted,c_embedding
 
 
 if __name__ == "__main__":
-    #adj_self_weight = [1,0,0.1,0.3,0.5,0.7,0.9,1,1.1,1.3,1.5,1.7,1.9,2]
-    adj_self_weight = [1]
-    record = {1:"1",0.1:"01",0.3:"03",0.5:"05",0.7:"07",0.9:"09",0:"0",1.1:"11",1.3:"13",1.5:"15",1.7:"17",1.9:"19",2:"2"}
-    
     for i in range(1, len(sys.argv), 2):
         arg = sys.argv[i]
         value = sys.argv[i + 1]
@@ -512,9 +454,7 @@ if __name__ == "__main__":
     if train_config["pretrain_model"] == "GCN":
         pre_train_model = GCN(train_config)
     if train_config["pretrain_model"] == "GIN":
-        # pre_train_model = DGI(train_config["node_feature_dim"],train_config["gcn_hidden_dim"],train_config)
-        
-        pre_train_model = GIN(train_config)  
+        pre_train_model = GIN(train_config)
     if train_config["pretrain_model"] == "GAT":
         pre_train_model = GAT(train_config)
     if train_config["pretrain_model"] == "GraphSage":
@@ -525,8 +465,6 @@ if __name__ == "__main__":
     dataset = GraphAdjDataset(list())
     dataset.load(os.path.join(train_config["save_data_dir"], "train_dgl_dataset.pt"))
 
-    #-------------start here-----------------------------------------------------------
-    #把划分好的task保存下来，使得以后不需要再重新划分tasks
     fewshot_dir=os.path.join(train_config["save_fewshot_dir"],"%s_trainshot_%s_valshot_%s_tasks" %
                              (train_config["train_shotnum"],train_config["val_shotnum"],train_config["few_shot_tasknum"]))
     if os.path.exists(train_config["save_fewshot_dir"])!=True:
@@ -553,183 +491,160 @@ if __name__ == "__main__":
         print("Load Few Shot")
         trainset = np.load(os.path.join(fewshot_dir, "train_dgl_dataset.npy"),allow_pickle=True)
         trainset = trainset.tolist()
-        print(len(trainset[0]))
         valset = np.load(os.path.join(fewshot_dir, "val_dgl_dataset.npy"),allow_pickle=True)
         valset = valset.tolist()
-        print(len(valset[0]))
         testset = np.load(os.path.join(fewshot_dir, "test_dgl_dataset.npy"),allow_pickle=True)
         testset = testset.tolist()
-        print(len(testset[0]))
 
 
 
+    acc = list()
+    macroF = list()
+    weightedF = list()
 
-    for weight in range(len(adj_self_weight)):
-        total_rec = list()
-        acc = list()
-        macroF = list()
-        weightedF = list()
-        for count in range(train_config["few_shot_tasknum"]):
-            print("--------------------------------------------------------------------------------------")
-            print("start task ",count)
-            #np.random.seed()
-            #torch.random.seed()
-            
-            
-            
-            if train_config["prompt"] == "MEAN":
-                model = graph_prompt_layer_mean()
-            if train_config["prompt"] == "SUM":
-                model = graph_prompt_layer_sum()
-            if train_config["prompt"] == "LINEAR-MEAN":
-                model = graph_prompt_layer_linear_mean(
-                    train_config["gcn_hidden_dim"] * train_config["gcn_graph_num_layers"],
-                    train_config["prompt_output_dim"])
-            if train_config["prompt"] == "LINEAR-SUM":
-                model = graph_prompt_layer_linear_sum(train_config["gcn_hidden_dim"] * train_config["gcn_graph_num_layers"],
-                                                    train_config["prompt_output_dim"])
-            if train_config["prompt"] == "FEATURE-WEIGHTED-SUM":
-                model = graph_prompt_layer_feature_weighted_sum(
-                    train_config["gcn_hidden_dim"] * train_config["gcn_graph_num_layers"])
-            if train_config["prompt"] == "FEATURE-WEIGHTED-MEAN":
-                model = graph_prompt_layer_feature_weighted_mean(
-                    train_config["gcn_hidden_dim"] * train_config["gcn_graph_num_layers"])
-            
-            pre_train_model.load_state_dict(torch.load(os.path.join(save_pretrain_model_dir, 'best_local_ex%s.pt'%(record[adj_self_weight[weight]])),map_location='cuda:0'))
-            # pre_train_model_dgi.load_state_dict(torch.load(os.path.join(save_pretrain_model_dir, 'graph_CL%s.pt'%(train_config["d_p"]))))
-            #pre_train_model.load_state_dict(torch.load(os.path.join(save_pretrain_model_dir, 'graph_CL_%s.pt'%(train_config["d_p"]))))
-            
-            # pre_train_model = pre_train_model_dgi.gin
-            pre_train_model = pre_train_model.to(device)
-            model = model.to(device)
-            logger.info(model)
-            logger.info("num of parameters: %d" % (sum(p.numel() for p in model.parameters() if p.requires_grad)))
+    for count in range(train_config["few_shot_tasknum"]):
+        print("--------------------------------------------------------------------------------------")
+        print("start task ",count)
+        #np.random.seed()
+        #torch.random.seed()
+        pre_train_model = pre_train_model.to(device)
+        if train_config["prompt"] == "MEAN":
+            model = graph_prompt_layer_mean()
+        if train_config["prompt"] == "SUM":
+            model = graph_prompt_layer_sum()
+        if train_config["prompt"] == "LINEAR-MEAN":
+            model = graph_prompt_layer_linear_mean(
+                train_config["gcn_hidden_dim"] * train_config["gcn_graph_num_layers"],
+                train_config["prompt_output_dim"])
+        if train_config["prompt"] == "LINEAR-SUM":
+            model = graph_prompt_layer_linear_sum(train_config["gcn_hidden_dim"] * train_config["gcn_graph_num_layers"],
+                                                  train_config["prompt_output_dim"])
+        if train_config["prompt"] == "FEATURE-WEIGHTED-SUM":
+            model = graph_prompt_layer_feature_weighted_sum(
+                train_config["gcn_hidden_dim"] * train_config["gcn_graph_num_layers"])
+        if train_config["prompt"] == "FEATURE-WEIGHTED-MEAN":
+            model = graph_prompt_layer_feature_weighted_mean(
+                train_config["gcn_hidden_dim"] * train_config["gcn_graph_num_layers"])
+        pre_train_model.load_state_dict(torch.load(os.path.join(save_pretrain_model_dir, 'best.pt')))
+        model = model.to(device)
+        logger.info(model)
+        logger.info("num of parameters: %d" % (sum(p.numel() for p in model.parameters() if p.requires_grad)))
 
-            data_loaders = OrderedDict({"train": None, "dev": None})
-            data_loaders["train"]=trainset[count]
-            data_loaders["dev"]=valset[count]
-            for data_type in data_loaders:
-                data=GraphAdjDataset_DGL_Input(data_loaders[data_type])
-                sampler = Sampler(data, group_by=["graph"], batch_size=train_config["batch_size"],
-                                shuffle=data_type == "train", drop_last=False)
-                data_loader = DataLoader(data,
-                                        batch_sampler=sampler,
-                                        collate_fn=GraphAdjDataset.batchify,
-                                        pin_memory=data_type == "train")
-                data_loaders[data_type] = data_loader
-            print('data_loaders', data_loaders.items())
+        data_loaders = OrderedDict({"train": None, "dev": None})
+        data_loaders["train"]=trainset[count]
+        data_loaders["dev"]=valset[count]
+        for data_type in data_loaders:
+            data=GraphAdjDataset_DGL_Input(data_loaders[data_type])
+            sampler = Sampler(data, group_by=["graph"], batch_size=train_config["batch_size"],
+                              shuffle=data_type == "train", drop_last=False)
+            data_loader = DataLoader(data,
+                                     batch_sampler=sampler,
+                                     collate_fn=GraphAdjDataset.batchify,
+                                     pin_memory=data_type == "train")
+            data_loaders[data_type] = data_loader
+        print('data_loaders', data_loaders.items())
 
-            # optimizer and losses
-            writer = SummaryWriter(save_model_dir)
-            if train_config["update_pretrain"]:
-                optimizer = torch.optim.AdamW(itertools.chain(pre_train_model.parameters(), model.parameters()),
-                                            lr=train_config["lr"],
-                                            weight_decay=train_config["weight_decay"], amsgrad=True)
-            else:
-                optimizer = torch.optim.AdamW(model.parameters(), lr=train_config["lr"],
-                                            weight_decay=train_config["weight_decay"], amsgrad=True)
+        # optimizer and losses
+        writer = SummaryWriter(save_model_dir)
+        if train_config["update_pretrain"]:
+            optimizer = torch.optim.AdamW(itertools.chain(pre_train_model.parameters(), model.parameters()),
+                                          lr=train_config["lr"],
+                                          weight_decay=train_config["weight_decay"], amsgrad=True)
+        else:
+            optimizer = torch.optim.AdamW(model.parameters(), lr=train_config["lr"],
+                                          weight_decay=train_config["weight_decay"], amsgrad=True)
 
-            optimizer.zero_grad()
-            scheduler = None
-            # scheduler = get_linear_schedule_with_warmup(optimizer,
-            #     len(data_loaders["train"]), train_config["epochs"]*len(data_loaders["train"]), min_percent=0.0001)
-            best_bp_losses = {"train": INF, "dev": INF, "test": INF}
-            best_bp_epochs = {"train": -1, "dev": -1, "test": -1}
-            best_acc = {"train": -1, "dev": -1, "test": -1}
+        optimizer.zero_grad()
+        scheduler = None
+        best_bp_losses = {"train": INF, "dev": INF, "test": INF}
+        best_bp_epochs = {"train": -1, "dev": -1, "test": -1}
+        best_acc = {"train": -1, "dev": -1, "test": -1}
 
-            total_train_time = 0
-            total_dev_time = 0
-            total_test_time = 0
-            best_c_embedding = None
-            c_embedding = None
+        total_train_time = 0
+        total_dev_time = 0
+        total_test_time = 0
+        best_c_embedding = None
+        c_embedding = None
 
-            for epoch in range(train_config["epochs"]):
-                for data_type, data_loader in data_loaders.items():
-
-                    if data_type == "train":
-                        mean_reg_loss, mean_bp_loss, _time, accfold,c_embedding = train(pre_train_model, model, optimizer, scheduler, data_type, data_loader, device,
-                                                                train_config, epoch, train_config["train_label_num"], logger=logger, writer=writer)
-                        total_train_time += _time
-                        torch.save(model.state_dict(), os.path.join(save_model_dir, 'epoch%d.pt' % (epoch)))
-                        if train_config["update_pretrain"] == True:
-                            torch.save(pre_train_model.state_dict(),os.path.join(save_model_dir, 'pretrain_epoch%d.pt' % (epoch)))
-
-                    else:
-                        mean_reg_loss, mean_bp_loss, evaluate_results, _time,accfold, macroFfold, weightedFfold,c_embedding = evaluate(pre_train_model, model, data_type, data_loader, device,
-                                                                                        train_config, epoch, c_embedding, train_config["val_label_num"], logger=logger,
-                                                                                        writer=writer)
-                        total_dev_time += _time
-                        with open(os.path.join(save_model_dir, '%s%d.json' % (data_type, epoch)), "w") as f:
-                            json.dump(evaluate_results, f)
-
-                    if accfold >= best_acc[data_type] or mean_bp_loss <= best_bp_losses[data_type]:
-                        # if epoch_accuracy > best_acc[data_type]:
-                        # if mean_bp_loss <= best_bp_losses[data_type]:
-                        # ------------------------------------------------------------
-                        # 这代码只针对or来选择时候生效
-                        if accfold >= best_acc[data_type]:
-                            best_acc[data_type] = accfold
-                        if mean_bp_loss < best_bp_losses[data_type]:
-                            best_bp_losses[data_type] = mean_bp_loss
-                        # ------------------------------------------------------------
-                        if data_type == "dev":
-                            best_c_embedding = c_embedding
-
-                        # best_bp_losses[data_type] = mean_bp_loss
-                        # best_acc[data_type]=epoch_accuracy
-                        best_bp_epochs[data_type] = epoch
-                       
-            # print("#################################################")
-            # print("total train time",total_train_time)
-            # print("#################################################")
-
-            best_epoch=best_bp_epochs["dev"]
-            data_loaders = OrderedDict({"test": None})
-            data_loaders["test"]=testset[count]
-            for data_type in data_loaders:
-                data=GraphAdjDataset_DGL_Input(data_loaders[data_type])
-                sampler = Sampler(data, group_by=["graph"], batch_size=train_config["batch_size"],
-                                shuffle=data_type == "train", drop_last=False)
-                data_loader = DataLoader(data,
-                                        batch_sampler=sampler,
-                                        collate_fn=GraphAdjDataset.batchify,
-                                        pin_memory=data_type == "train")
-                data_loaders[data_type] = data_loader
-
-            model.load_state_dict(torch.load(os.path.join(save_model_dir, 'epoch%d.pt' % (best_epoch))))
-            if train_config["update_pretrain"] == True:
-                pre_train_model.load_state_dict(
-                    torch.load(os.path.join(save_model_dir, 'pretrain_epoch%d.pt' % (best_epoch))))
+        for epoch in range(train_config["epochs"]):
             for data_type, data_loader in data_loaders.items():
-                mean_reg_loss, mean_bp_loss, evaluate_results, _time, acctest, macroFtest, weightedFtest,c_embedding = evaluate(
-                    pre_train_model, model, data_type, data_loader, device,
-                    train_config, epoch, best_c_embedding, train_config["test_label_num"], debug=False, logger=logger,
-                    writer=writer)
 
-            acc.append(acctest)
-            macroF.append(macroFtest)
-            weightedF.append(weightedFtest)
+                if data_type == "train":
+                    mean_reg_loss, mean_bp_loss, _time, accfold,c_embedding = train(pre_train_model, model, optimizer, scheduler, data_type, data_loader, device,
+                                                               train_config, epoch, train_config["train_label_num"], logger=logger, writer=writer)
+                    total_train_time += _time
+                    torch.save(model.state_dict(), os.path.join(save_model_dir, 'epoch%d.pt' % (epoch)))
+                    if train_config["update_pretrain"] == True:
+                        torch.save(pre_train_model.state_dict(),os.path.join(save_model_dir, 'pretrain_epoch%d.pt' % (epoch)))
+
+                else:
+                    mean_reg_loss, mean_bp_loss, evaluate_results, _time,accfold, macroFfold, weightedFfold,c_embedding = evaluate(pre_train_model, model, data_type, data_loader, device,
+                                                                                    train_config, epoch, c_embedding, train_config["val_label_num"], logger=logger,
+                                                                                    writer=writer)
+                    total_dev_time += _time
+                    with open(os.path.join(save_model_dir, '%s%d.json' % (data_type, epoch)), "w") as f:
+                        json.dump(evaluate_results, f)
+
+                if accfold >= best_acc[data_type] or mean_bp_loss <= best_bp_losses[data_type]:
+                    if accfold >= best_acc[data_type]:
+                        best_acc[data_type] = accfold
+                    if mean_bp_loss < best_bp_losses[data_type]:
+                        best_bp_losses[data_type] = mean_bp_loss
+                    # ------------------------------------------------------------
+                    if data_type == "dev":
+                        best_c_embedding = c_embedding
+
+                    # best_bp_losses[data_type] = mean_bp_loss
+                    # best_acc[data_type]=epoch_accuracy
+                    best_bp_epochs[data_type] = epoch
+                    logger.info(
+                        "data_type: {:<5s}\tbest mean loss: {:.3f}\t best acc: {:.3f}\t (epoch: {:0>3d})".format(
+                            data_type, mean_bp_loss, accfold, epoch))
+
+        best_epoch=best_bp_epochs["dev"]
+        data_loaders = OrderedDict({"test": None})
+        data_loaders["test"]=testset[count]
+        for data_type in data_loaders:
+            data=GraphAdjDataset_DGL_Input(data_loaders[data_type])
+            sampler = Sampler(data, group_by=["graph"], batch_size=train_config["batch_size"],
+                              shuffle=data_type == "train", drop_last=False)
+            data_loader = DataLoader(data,
+                                     batch_sampler=sampler,
+                                     collate_fn=GraphAdjDataset.batchify,
+                                     pin_memory=data_type == "train")
+            data_loaders[data_type] = data_loader
+
+        model.load_state_dict(torch.load(os.path.join(save_model_dir, 'epoch%d.pt' % (best_epoch))))
+        if train_config["update_pretrain"] == True:
+            pre_train_model.load_state_dict(
+                torch.load(os.path.join(save_model_dir, 'pretrain_epoch%d.pt' % (best_epoch))))
+        for data_type, data_loader in data_loaders.items():
+            mean_reg_loss, mean_bp_loss, evaluate_results, _time, acctest, macroFtest, weightedFtest,c_embedding = evaluate(
+                pre_train_model, model, data_type, data_loader, device,
+                train_config, epoch, best_c_embedding, train_config["test_label_num"], debug=False, logger=logger,
+                writer=writer)
+
+        acc.append(acctest)
+        macroF.append(macroFtest)
+        weightedF.append(weightedFtest)
 
 
 
-           
-       
-        acc=np.array(acc)
-        macroF=np.array(macroF)
-        weightedF=np.array(weightedF)
+        for data_type in data_loaders.keys():
+            logger.info(
+                "data_type: {:<5s}\tbest mean loss: {:.3f} (epoch: {:0>3d})".format(data_type, best_bp_losses[data_type],
+                                                                                    best_bp_epochs[data_type]))
 
-        total_rec.append('%sacc mean:'%(record[adj_self_weight[weight]]))
-        total_rec.append(np.mean(acc))
-        
-        total_rec.append('%sacc std: '%(record[adj_self_weight[weight]]))
-        total_rec.append(np.std(acc))
-        total_rec.append('%sMF:'%(record[adj_self_weight[weight]]))
-        total_rec.append(np.mean(macroF))
-        
-        total_rec.append('%sMFstd: '%(record[adj_self_weight[weight]]))
-        total_rec.append(np.std(macroF))
-        #np.savetxt('total_rec%s_enzymes.txt'%(record[adj_self_weight[weight]]),total_rec,fmt='%s')
-        np.savetxt('00a%s.txt'%(train_config["data_type"],train_config["d_p"]),total_rec,fmt='%s')
+    print('acc for 10fold: ', acc)
+    print('macroF for 10fold: ', macroF)
+    print('weightedF for 10fold: ', weightedF)
+    acc=np.array(acc)
+    macroF=np.array(macroF)
+    weightedF=np.array(weightedF)
 
-        # _________________________________________________________________________________________________________________
+    print('acc mean: ',np.mean(acc), 'acc std: ',np.std(acc))
+    print('macroF mean: ',np.mean(macroF), 'macroF std: ',np.std(macroF))
+    print('weightedF mean: ',np.mean(weightedF), 'weightedF std: ',np.std(weightedF))
+
+    # _________________________________________________________________________________________________________________
 
