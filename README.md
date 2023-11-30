@@ -1,6 +1,8 @@
 We provide the code (in pytorch) and datasets for our paper [**"GraphPrompt: Unifying Pre-Training and Downstream Tasks
 for Graph Neural Networks"**](https://arxiv.org/pdf/2302.08043.pdf), 
 which is accepted by WWW2023.
+We Further extend GraphPrompt to GraphPrompt+ [**"Generalized Graph Prompt: Toward a Unification of Pre-Training and
+Downstream Tasks on Graphs"**](https://arxiv.org/pdf/2311.15317.pdf), the code and datasets are publicly available(https://github.com/gmcmt/graph_prompt_extension).
 
 ## Description
 The repository is organised as follows:
