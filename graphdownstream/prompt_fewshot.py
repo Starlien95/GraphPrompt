@@ -234,7 +234,6 @@ def train(pretrain_model, model, optimizer, scheduler, data_type, data_loader, d
         pred=F.log_softmax(distance,dim=1)
         #----------------------------------------
         #reg_loss = reg_crit(pred, graph_label_onehot)
-        #对NLL LOSS用这个公式，否则用上面的
         reg_loss = reg_crit(pred, graph_label.squeeze().type(torch.LongTensor).to(device))
         #------------------------------------------------
         reg_loss.requires_grad_(True)
@@ -249,7 +248,6 @@ def train(pretrain_model, model, optimizer, scheduler, data_type, data_loader, d
                                 lambda1=float(l1))
 
         #bp_loss = bp_crit(pred.float(), graph_label_onehot.float(), neg_slp)
-        #对NLL LOSS用这个公式，否则用上面的
         bp_loss = bp_crit(pred.float(), graph_label.squeeze().type(torch.LongTensor).to(device),neg_slp)
         bp_loss.requires_grad_(True)
 
@@ -378,7 +376,7 @@ def evaluate(pretrain_model, model, data_type, data_loader, device, config, epoc
             distance=-1*F.normalize(distance,dim=1)
 
             pred=F.log_softmax(distance,dim=1)
-            # 对NLL LOSS用这个公式，否则用上面的
+            
             reg_loss = reg_crit(pred, graph_label.squeeze().type(torch.LongTensor).to(device))
 
             if isinstance(config["bp_loss_slp"], (int, float)):
@@ -388,7 +386,7 @@ def evaluate(pretrain_model, model, data_type, data_loader, device, config, epoc
                 neg_slp = anneal_fn(bp_loss_slp, batch_id + epoch * epoch_step, T=total_step // 4, lambda0=float(l0),
                                     lambda1=float(l1))
             #bp_loss = bp_crit(pred.float(), graph_label_onehot.float(), neg_slp)
-            # 对NLL LOSS用这个公式，否则用上面的
+           
             bp_loss = bp_crit(pred, graph_label.squeeze().type(torch.LongTensor).to(device), neg_slp)
 
             #graph_label_onehot=l2onehot(graph_label)
@@ -525,8 +523,7 @@ if __name__ == "__main__":
     dataset = GraphAdjDataset(list())
     dataset.load(os.path.join(train_config["save_data_dir"], "train_dgl_dataset.pt"))
 
-    #-------------start here-----------------------------------------------------------
-    #把划分好的task保存下来，使得以后不需要再重新划分tasks
+
     fewshot_dir=os.path.join(train_config["save_fewshot_dir"],"%s_trainshot_%s_valshot_%s_tasks" %
                              (train_config["train_shotnum"],train_config["val_shotnum"],train_config["few_shot_tasknum"]))
     if os.path.exists(train_config["save_fewshot_dir"])!=True:
@@ -666,7 +663,7 @@ if __name__ == "__main__":
                         # if epoch_accuracy > best_acc[data_type]:
                         # if mean_bp_loss <= best_bp_losses[data_type]:
                         # ------------------------------------------------------------
-                        # 这代码只针对or来选择时候生效
+                        
                         if accfold >= best_acc[data_type]:
                             best_acc[data_type] = accfold
                         if mean_bp_loss < best_bp_losses[data_type]:
@@ -679,9 +676,7 @@ if __name__ == "__main__":
                         # best_acc[data_type]=epoch_accuracy
                         best_bp_epochs[data_type] = epoch
                        
-            # print("#################################################")
-            # print("total train time",total_train_time)
-            # print("#################################################")
+
 
             best_epoch=best_bp_epochs["dev"]
             data_loaders = OrderedDict({"test": None})
